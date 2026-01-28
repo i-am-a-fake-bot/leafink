@@ -44,17 +44,15 @@
     </div>
 
 <script>
-    let book, rendition;
+let book, rendition;
     const input = document.getElementById("input");
     const tocSelect = document.getElementById("toc");
-    const installBtn = document.getElementById('installBtn');
     const libraryDiv = document.getElementById("library");
     const viewerDiv = document.getElementById("viewer");
     const controlsDiv = document.querySelector(".controls");
     const backBtn = document.getElementById("backBtn");
-    let deferredPrompt; 
 
-    // Open/Create Database
+    // 1. Database Setup
     const dbRequest = indexedDB.open("ReaderDB", 1);
     dbRequest.onupgradeneeded = e => {
         let db = e.target.result;
@@ -63,18 +61,25 @@
         }
     };
 
+    // 2. Clear UI to Library State
     function showLibrary() {
-        if (book) { book.destroy(); book = null; }
+        if (book) {
+            book.destroy();
+            book = null;
+        }
+        // Force Visibility
         libraryDiv.classList.remove("hidden");
         viewerDiv.classList.add("hidden");
         controlsDiv.classList.add("hidden");
         tocSelect.classList.add("hidden");
-        backBtn.classList.add("hidden");
+        backBtn.classList.add("hidden"); // Hide home btn while at home
+        
         updateLibraryUI();
     }
 
+    // 3. Load and Render Book
     async function loadBook(data) {
-        // UI Switching
+        // Prepare UI first
         libraryDiv.classList.add("hidden");
         viewerDiv.classList.remove("hidden");
         controlsDiv.classList.remove("hidden");
@@ -82,8 +87,9 @@
         backBtn.classList.remove("hidden");
 
         if (book) book.destroy();
-        book = ePub(data);
         
+        // Initialize ePub
+        book = ePub(data);
         rendition = book.renderTo("viewer", { 
             width: "100%", 
             height: "100%", 
@@ -91,20 +97,13 @@
             manager: "default"
         });
 
-        rendition.hooks.content.register((contents) => {
-            contents.addStylesheetRules({
-                "body": { "transition": "transform 0.5s ease-in-out !important" }
-            });
-        });
+        // Use a small timeout to let the browser draw the #viewer div 
+        // before epubjs tries to measure its size.
+        setTimeout(() => {
+            const savedLocation = localStorage.getItem("lastLocation");
+            rendition.display(savedLocation || undefined);
+        }, 100);
 
-        let touchStartX = 0;
-        rendition.on("touchstart", event => { touchStartX = event.changedTouches[0].screenX; });
-        rendition.on("touchend", event => {
-            const touchEndX = event.changedTouches[0].screenX;
-            if (touchEndX < touchStartX - 50) rendition.next();
-            if (touchEndX > touchStartX + 50) rendition.prev();
-        });
-        
         book.loaded.navigation.then(nav => {
             tocSelect.innerHTML = '<option>Contents</option>';
             nav.toc.forEach(chapter => {
@@ -118,11 +117,9 @@
         rendition.on("relocated", location => {
             localStorage.setItem("lastLocation", location.start.cfi);
         });
-
-        const savedLocation = localStorage.getItem("lastLocation");
-        rendition.display(savedLocation || undefined);
     }
 
+    // 4. Update the Library Grid
     function updateLibraryUI() {
         const request = indexedDB.open("ReaderDB", 1);
         request.onsuccess = e => {
@@ -134,18 +131,19 @@
             getAll.onsuccess = () => {
                 libraryDiv.innerHTML = "";
                 if (getAll.result.length === 0) {
-                    libraryDiv.innerHTML = "<p style='grid-column: 1/-1; text-align:center; color:#888;'>No books saved. Click 'Choose File' to add one!</p>";
+                    libraryDiv.innerHTML = "<p style='grid-column: 1/-1; text-align:center; padding: 50px; color:#888;'>No books saved. Click 'Choose File' to add one!</p>";
                 }
                 getAll.result.forEach(item => {
                     const card = document.createElement("div");
                     card.className = "book-item";
                     card.innerHTML = `
-                        <div style="text-align:right; margin-bottom:-10px;">
+                        <div style="text-align:right;">
                             <button onclick="deleteBook('${item.name.replace(/'/g, "\\'")}', event)" 
-                                style="background:none; color:#ff4d4d; padding:0; font-weight:bold;">❌</button>
+                                style="background:none; color:red; padding:0; font-weight:bold;">✕</button>
                         </div>
-                        <span style="font-size:30px">📖</span>
-                        <br><small style="display:block; margin-top:5px; word-break:break-all;">${item.name}</small>`;
+                        <span style="font-size:40px">📖</span>
+                        <div style="font-size:12px; margin-top:10px; word-break:break-all;">${item.name}</div>`;
+                    
                     card.onclick = () => {
                         localStorage.setItem("lastBookName", item.name);
                         loadBook(item.data);
@@ -156,77 +154,46 @@
         };
     }
 
-    tocSelect.onchange = () => rendition.display(tocSelect.value);
-    document.getElementById("next").onclick = () => rendition?.next();
-    document.getElementById("prev").onclick = () => rendition?.prev();
-
+    // Input Handling
     input.addEventListener("change", async (e) => {
         const file = e.target.files[0];
         if (!file) return;
         const arrayBuffer = await file.arrayBuffer();
-        
         const request = indexedDB.open("ReaderDB", 1);
         request.onsuccess = ev => {
             const db = ev.target.result;
-            db.transaction("books", "readwrite").objectStore("books").put({
-                name: file.name,
-                data: arrayBuffer
-            });
-            updateLibraryUI();
-            localStorage.setItem("lastBookName", file.name);
-            loadBook(arrayBuffer);
+            const tx = db.transaction("books", "readwrite");
+            tx.objectStore("books").put({ name: file.name, data: arrayBuffer });
+            tx.oncomplete = () => {
+                localStorage.setItem("lastBookName", file.name);
+                loadBook(arrayBuffer);
+            };
         };
     });
 
-    window.onload = () => {
-        showLibrary();
-        updateLibraryUI();
-        const lastBookName = localStorage.getItem("lastBookName");
-        
-        if (lastBookName) {
-            const request = indexedDB.open("ReaderDB", 1);
-            request.onsuccess = e => {
-                const db = e.target.result;
-                db.transaction("books").objectStore("books").get(lastBookName).onsuccess = event => {
-                    //if (event.target.result) loadBook(event.target.result.data);
-                };
-            };
-        }
-    };
-
-    if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js'); }
-    window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        deferredPrompt = e;
-        installBtn.style.display = 'inline-block';
-    });
-    installBtn.addEventListener('click', async () => {
-        if (deferredPrompt) {
-            deferredPrompt.prompt();
-            const { outcome } = await deferredPrompt.userChoice;
-            if (outcome === 'accepted') installBtn.style.display = 'none';
-            deferredPrompt = null;
-        }
-    });
-
     function deleteBook(name, event) {
-        event.stopPropagation(); // Prevents the book from opening when you click delete
+        event.stopPropagation();
         if (!confirm(`Delete "${name}"?`)) return;
-    
         const request = indexedDB.open("ReaderDB", 1);
         request.onsuccess = e => {
             const db = e.target.result;
-            const transaction = db.transaction("books", "readwrite");
-            transaction.objectStore("books").delete(name);
-            transaction.oncomplete = () => {
-                if (localStorage.getItem("lastBookName") === name) {
-                    localStorage.removeItem("lastBookName");
-                }
+            db.transaction("books", "readwrite").objectStore("books").delete(name).onsuccess = () => {
+                if (localStorage.getItem("lastBookName") === name) localStorage.removeItem("lastBookName");
                 updateLibraryUI();
             };
         };
     }
-    
+
+    // Navigation
+    document.getElementById("next").onclick = () => rendition?.next();
+    document.getElementById("prev").onclick = () => rendition?.prev();
+    tocSelect.onchange = () => rendition.display(tocSelect.value);
+
+    // Initial Load
+    window.onload = () => {
+        showLibrary();
+    };
 </script>
 </body>
 </html>
+
