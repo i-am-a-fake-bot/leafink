@@ -35,3 +35,16 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
+// Add these lines to your sw.js
+self.addEventListener('install', (event) => {
+  self.skipWaiting(); // Force installation
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(clients.claim()); // Take control immediately
+  // ... rest of your cleanup code
+});
