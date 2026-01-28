@@ -39,31 +39,45 @@
     const installBtn = document.getElementById('installBtn');
     let deferredPrompt; // Declared only once
 
-    // 1. Load and Render Book
-    async function loadBook(data) {
-        if (book) book.destroy();
-        book = ePub(data);
-        rendition = book.renderTo("viewer", { width: "100%", height: "100%", flow: "paginated" });
+async function loadBook(data) {
+    if (book) book.destroy();
+    book = ePub(data);
+    
+    // Use 'paginated' flow for page-by-page viewing
+    rendition = book.renderTo("viewer", { 
+        width: "100%", 
+        height: "100%", 
+        flow: "paginated",
+        manager: "default"
+    });
 
-        // Generate Table of Contents
-        book.loaded.navigation.then(nav => {
-            tocSelect.innerHTML = '<option>Contents</option>';
-            nav.toc.forEach(chapter => {
-                const option = document.createElement("option");
-                option.textContent = chapter.label;
-                option.value = chapter.href;
-                tocSelect.appendChild(option);
-            });
+    // --- ADD THE SLIDE ANIMATION HOOK ---
+    book.rendition.hooks.content.register((contents) => {
+        const style = contents.addStylesheetRules({
+            "body": {
+                "transition": "transform 0.3s ease-in-out !important",
+            }
         });
+    });
 
-        rendition.on("relocated", location => {
-            localStorage.setItem("lastLocation", location.start.cfi);
+    // Populate Table of Contents (as before)
+    book.loaded.navigation.then(nav => {
+        tocSelect.innerHTML = '<option>Contents</option>';
+        nav.toc.forEach(chapter => {
+            const option = document.createElement("option");
+            option.textContent = chapter.label;
+            option.value = chapter.href;
+            tocSelect.appendChild(option);
         });
+    });
 
-        const savedLocation = localStorage.getItem("lastLocation");
-        rendition.display(savedLocation || undefined);
-    }
+    rendition.on("relocated", location => {
+        localStorage.setItem("lastLocation", location.start.cfi);
+    });
 
+    const savedLocation = localStorage.getItem("lastLocation");
+    rendition.display(savedLocation || undefined);
+}
     // 2. Navigation & Files
     tocSelect.onchange = () => rendition.display(tocSelect.value);
     document.getElementById("next").onclick = () => rendition?.next();
@@ -119,3 +133,4 @@
 </script>
 </body>
 </html>
+
