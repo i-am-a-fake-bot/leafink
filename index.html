@@ -37,13 +37,12 @@
     const input = document.getElementById("input");
     const tocSelect = document.getElementById("toc");
     const installBtn = document.getElementById('installBtn');
-    let deferredPrompt; // Declared only once
+    let deferredPrompt; 
 
 async function loadBook(data) {
     if (book) book.destroy();
     book = ePub(data);
     
-    // Use 'paginated' flow for page-by-page viewing
     rendition = book.renderTo("viewer", { 
         width: "100%", 
         height: "100%", 
@@ -51,16 +50,27 @@ async function loadBook(data) {
         manager: "default"
     });
 
-    // --- ADD THE SLIDE ANIMATION HOOK ---
-    book.rendition.hooks.content.register((contents) => {
-        const style = contents.addStylesheetRules({
+    // --- SLIDE ANIMATION HOOK ---
+    rendition.hooks.content.register((contents) => {
+        contents.addStylesheetRules({
             "body": {
                 "transition": "transform 0.3s ease-in-out !important",
             }
         });
     });
 
-    // Populate Table of Contents (as before)
+    // --- Swipe Listeners (Now using local touchStartX to avoid 'this' issues) ---
+    let touchStartX = 0;
+    rendition.on("touchstart", event => {
+        touchStartX = event.changedTouches[0].screenX;
+    });
+
+    rendition.on("touchend", event => {
+        const touchEndX = event.changedTouches[0].screenX;
+        if (touchEndX < touchStartX - 50) rendition.next();
+        if (touchEndX > touchStartX + 50) rendition.prev();
+    });
+    
     book.loaded.navigation.then(nav => {
         tocSelect.innerHTML = '<option>Contents</option>';
         nav.toc.forEach(chapter => {
@@ -131,17 +141,6 @@ async function loadBook(data) {
         }
     });
 
-    if (rendition) {
-        rendition.on("touchstart", event => {
-        this.touchStartX = event.changedTouches[0].screenX;
-    });
-
-    rendition.on("touchend", event => {
-        const touchEndX = event.changedTouches[0].screenX;
-        if (touchEndX < this.touchStartX - 50) rendition.next();
-        if (touchEndX > this.touchStartX + 50) rendition.prev();
-});
-    
 </script>
 </body>
 </html>
