@@ -130,7 +130,19 @@ async function loadBook(data) {
             deferredPrompt = null;
         }
     });
+
+    rendition.on("touchstart", event => {
+    this.touchStartX = event.changedTouches[0].screenX;
+});
+
+rendition.on("touchend", event => {
+    const touchEndX = event.changedTouches[0].screenX;
+    if (touchEndX < this.touchStartX - 50) rendition.next();
+    if (touchEndX > this.touchStartX + 50) rendition.prev();
+});
+    
 </script>
 </body>
 </html>
+
 
