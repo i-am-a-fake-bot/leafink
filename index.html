@@ -20,6 +20,10 @@
         <button id="next">Next →</button>
     </div>
 
+<button id="installBtn" style="display:none; background: #007bff; color: white; border: none; padding: 10px; border-radius: 5px; margin: 10px;">
+  📥 Install App
+</button>
+	
 <script>
     let book, rendition;
     const input = document.getElementById("input");
@@ -99,8 +103,29 @@
 		deferredPrompt = null;
 	  }
 	}	
-		
+let deferredPrompt;
+const installBtn = document.getElementById('installBtn');
+
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    installBtn.style.display = 'inline-block'; // Show button when ready
+});
+
+installBtn.addEventListener('click', async () => {
+    if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+            installBtn.style.display = 'none';
+        }
+        deferredPrompt = null;
+    }
+});
+
+	
 		
     </script>
 </body>
 </html>
+
