@@ -70,13 +70,9 @@
     // 1. DATABASE SETUP WITH ERROR HANDLING
     function getDB() {
         return new Promise((resolve, reject) => {
-            const request = indexedDB.open("ReaderDB", 1);
+            // Renaming to 'LeafinkDB' bypasses the old stuck 'ReaderDB'
+            const request = indexedDB.open("LeafinkDB", 1);
             
-            // If another tab/version is open, this forces it to resolve
-            request.onblocked = () => {
-                alert("Please close other tabs of this app to update.");
-            };
-
             request.onupgradeneeded = e => {
                 const db = e.target.result;
                 if (!db.objectStoreNames.contains("books")) {
@@ -85,9 +81,15 @@
             };
 
             request.onsuccess = e => resolve(e.target.result);
+            
             request.onerror = e => {
                 console.error("DB Error:", e.target.error);
                 reject("IndexedDB failed to open");
+            };
+
+            // This is the safety net
+            request.onblocked = () => {
+                console.warn("Database blocked! Please close other tabs.");
             };
         });
     }
