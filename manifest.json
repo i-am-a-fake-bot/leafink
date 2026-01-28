@@ -1,13 +1,22 @@
 {
-  "name": "LiteRead eBook Reader",
-  "short_name": "LiteRead",
-  "start_url": "/",
+  "name": "Leafink eBook Reader",
+  "short_name": "Leafink",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#007bff",
   "icons": [
-    { "src": "book1.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "book2.png", "sizes": "512x512", "type": "image/png" }
+    { 
+      "src": "book1.png", 
+      "sizes": "192x192", 
+      "type": "image/png",
+      "purpose": "any maskable" 
+    },
+    { 
+      "src": "book2.png", 
+      "sizes": "512x512", 
+      "type": "image/png",
+      "purpose": "any"
+    }
   ]
-
 }
