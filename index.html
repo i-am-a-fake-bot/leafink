@@ -59,63 +59,63 @@
     </div>
 
 <script>
-let book, rendition;
+    let book, rendition;
     const libraryDiv = document.getElementById("library");
     const viewerDiv = document.getElementById("viewer");
     const controlsDiv = document.getElementById("controls");
     const tocSelect = document.getElementById("toc");
     const input = document.getElementById("input");
     const backBtn = document.getElementById("backBtn");
-
-    // 1. DATABASE SETUP
-    const dbRequest = indexedDB.open("ReaderDB", 1);
-    dbRequest.onupgradeneeded = e => {
-        e.target.result.createObjectStore("books", { keyPath: "name" });
-    };
-
+    
+    // 1. DATABASE SETUP WITH ERROR HANDLING
+    function getDB() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open("ReaderDB", 1);
+            request.onupgradeneeded = e => {
+                e.target.result.createObjectStore("books", { keyPath: "name" });
+            };
+            request.onsuccess = e => resolve(e.target.result);
+            request.onerror = e => reject("IndexedDB failed to open");
+        });
+    }
+    
     // 2. SHOW LIBRARY (HOME VIEW)
-    function showLibrary() {
-        // Clean up memory
+    async function showLibrary() {
         if (book) { book.destroy(); book = null; }
         
-        // UI Toggle
+        // UI Reset
         libraryDiv.classList.remove("hidden");
         input.classList.remove("hidden");
-        
         viewerDiv.classList.add("hidden");
         controlsDiv.classList.add("hidden");
         tocSelect.classList.add("hidden");
-        backBtn.classList.add("hidden"); // Hide home button when already home
+        backBtn.classList.add("hidden");
         
-        updateLibraryUI();
+        await updateLibraryUI();
     }
-
+    
     // 3. LOAD BOOK (READ VIEW)
     async function loadBook(data) {
-        // Show Reader UI first
         libraryDiv.classList.add("hidden");
         input.classList.add("hidden");
-        
         viewerDiv.classList.remove("hidden");
         controlsDiv.classList.remove("hidden");
         tocSelect.classList.remove("hidden");
-        backBtn.classList.remove("hidden"); // Show home button to allow escape
-
+        backBtn.classList.remove("hidden");
+    
         if (book) book.destroy();
         
         book = ePub(data);
         rendition = book.renderTo("viewer", { 
             width: "100%", 
             height: "100%", 
-            flow: "paginated",
-            manager: "default"
+            flow: "paginated"
         });
-
-        // CRITICAL: Wait for the div to exist in the DOM before displaying
+    
         setTimeout(() => {
-            rendition.display();
-        }, 100);
-
+            rendition.display().catch(err => console.error("Render error:", err));
+        }, 200);
+    
         book.loaded.navigation.then(nav => {
             tocSelect.innerHTML = '<option value="">Contents</option>';
             nav.toc.forEach(chap => {
@@ -126,67 +126,68 @@ let book, rendition;
             });
         });
     }
-
+    
     // 4. DRAW THE LIBRARY GRID
-    function updateLibraryUI() {
-        const req = indexedDB.open("ReaderDB", 1);
-        req.onsuccess = e => {
-            const db = e.target.result;
+    async function updateLibraryUI() {
+        try {
+            const db = await getDB();
             const tx = db.transaction("books", "readonly");
             const store = tx.objectStore("books");
             const getAll = store.getAll();
-
+    
             getAll.onsuccess = () => {
                 libraryDiv.innerHTML = "";
-                if (getAll.result.length === 0) {
-                    libraryDiv.innerHTML = "<p style='grid-column:1/-1; text-align:center; padding:40px; color:#888;'>No books saved. Upload one!</p>";
+                const books = getAll.result;
+                
+                if (books.length === 0) {
+                    libraryDiv.innerHTML = "<div style='grid-column:1/-1; text-align:center; padding:40px; color:#666;'>Your library is empty.</div>";
+                    return;
                 }
-                getAll.result.forEach(item => {
+    
+                books.forEach(item => {
                     const card = document.createElement("div");
                     card.className = "book-item";
-                    // Fixed the string escaping for book names
                     const safeName = item.name.replace(/'/g, "\\'");
                     card.innerHTML = `
                         <div style="text-align:right">
-                            <button onclick="deleteBook('${safeName}', event)" style="background:none; color:red; padding:0;">✕</button>
+                            <button onclick="deleteBook('${safeName}', event)" style="background:none; color:red; padding:0; font-size:20px;">×</button>
                         </div>
-                        <strong>📖</strong><br><small>${item.name}</small>`;
+                        <div style="font-size:40px;">📖</div>
+                        <div style="font-size:12px; margin-top:5px; font-weight:bold;">${item.name}</div>`;
                     card.onclick = () => loadBook(item.data);
                     libraryDiv.appendChild(card);
                 });
             };
-        };
+        } catch (err) {
+            libraryDiv.innerHTML = "<p>Error loading library. Please refresh.</p>";
+        }
     }
-
-    function deleteBook(name, event) {
+    
+    // 5. DELETE & UPLOAD
+    async function deleteBook(name, event) {
         event.stopPropagation();
-        if (!confirm("Delete?")) return;
-        const req = indexedDB.open("ReaderDB", 1);
-        req.onsuccess = e => {
-            e.target.result.transaction("books", "readwrite").objectStore("books").delete(name).onsuccess = () => updateLibraryUI();
-        };
+        if (!confirm("Delete this book?")) return;
+        const db = await getDB();
+        db.transaction("books", "readwrite").objectStore("books").delete(name).onsuccess = () => updateLibraryUI();
     }
-
-    // 5. FILE UPLOAD
+    
     input.onchange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
         const data = await file.arrayBuffer();
-        const req = indexedDB.open("ReaderDB", 1);
-        req.onsuccess = ev => {
-            const db = ev.target.result;
-            const tx = db.transaction("books", "readwrite");
-            tx.objectStore("books").put({ name: file.name, data: data });
-            tx.oncomplete = () => loadBook(data);
-        };
+        const db = await getDB();
+        const tx = db.transaction("books", "readwrite");
+        tx.objectStore("books").put({ name: file.name, data: data });
+        tx.oncomplete = () => loadBook(data);
     };
-
-    tocSelect.onchange = () => rendition.display(tocSelect.value);
+    
+    // Navigation
     document.getElementById("next").onclick = () => rendition?.next();
     document.getElementById("prev").onclick = () => rendition?.prev();
-
+    tocSelect.onchange = () => rendition.display(tocSelect.value);
+    
+    // Initial Load
     window.onload = showLibrary;
-
 </script>
 </body>
 </html>
