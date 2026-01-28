@@ -1,6 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Leafink">
+    <meta name="apple-mobile-web-app-title" content="Leafink">
+    <meta name="theme-color" content="#007bff">
+    <meta name="msapplication-navbutton-color" content="#007bff">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Leafink Reader</title>
@@ -254,6 +261,15 @@
     
     // Initial Load
     window.onload = showLibrary;
+
+    // At the bottom of your <script>
+    window.addEventListener('beforeinstallprompt', (e) => {
+        // Prevent the mini-infobar from appearing on mobile
+        e.preventDefault();
+        // Stash the event so it can be triggered later if you add an 'Install' button
+        console.log('App is ready to be installed');
+    });
+    
 </script>
 </body>
 </html>
