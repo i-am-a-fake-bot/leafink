@@ -15,37 +15,43 @@
         select { padding: 5px; max-width: 200px; }
         button { padding: 8px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
         button:hover { background: #0056b3; }
+        
+        /* Library Styles */
         #library { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 15px; padding: 20px; }
-        .book-item { background: #fff; border: 1px solid #ddd; padding: 10px; text-align: center; cursor: pointer; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .book-item:hover { background: #f0f0f0; }
+        .book-item { background: #fff; border: 1px solid #ddd; padding: 15px; text-align: center; cursor: pointer; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .book-item:hover { background: #f0f0f0; transform: translateY(-2px); transition: 0.2s; }
         .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
     <div class="nav-bar">
-        <input type="file" id="input" accept=".epub">
-        <select id="toc"><option>Contents</option></select>
+        <div>
+            <button id="backBtn" class="hidden" onclick="showLibrary()">🏠 Library</button>
+            <input type="file" id="input" accept=".epub">
+        </div>
+        <select id="toc" class="hidden"><option>Contents</option></select>
         <button id="installBtn" style="display:none;">📥 Install</button>
     </div>
 
     <div id="library"></div>
     
-    <div id="viewer"></div>
+    <div id="viewer" class="hidden"></div>
 
-    <div class="controls">
+    <div class="controls hidden">
         <button id="prev">← Prev</button>
         <button id="next">Next →</button>
     </div>
 
 <script>
-let book, rendition;
+    let book, rendition;
     const input = document.getElementById("input");
     const tocSelect = document.getElementById("toc");
     const installBtn = document.getElementById('installBtn');
     const libraryDiv = document.getElementById("library");
     const viewerDiv = document.getElementById("viewer");
     const controlsDiv = document.querySelector(".controls");
+    const backBtn = document.getElementById("backBtn");
     let deferredPrompt; 
 
     // Open/Create Database
@@ -53,16 +59,27 @@ let book, rendition;
     dbRequest.onupgradeneeded = e => {
         let db = e.target.result;
         if (!db.objectStoreNames.contains("books")) {
-            // We use the file name as the unique key
             db.createObjectStore("books", { keyPath: "name" });
         }
     };
 
+    function showLibrary() {
+        if (book) book.destroy();
+        libraryDiv.classList.remove("hidden");
+        viewerDiv.classList.add("hidden");
+        controlsDiv.classList.add("hidden");
+        tocSelect.classList.add("hidden");
+        backBtn.classList.add("hidden");
+        updateLibraryUI();
+    }
+
     async function loadBook(data) {
-        // Hide library, show reader
+        // UI Switching
         libraryDiv.classList.add("hidden");
         viewerDiv.classList.remove("hidden");
         controlsDiv.classList.remove("hidden");
+        tocSelect.classList.remove("hidden");
+        backBtn.classList.remove("hidden");
 
         if (book) book.destroy();
         book = ePub(data);
@@ -106,7 +123,6 @@ let book, rendition;
         rendition.display(savedLocation || undefined);
     }
 
-    // Function to show all books in the library
     function updateLibraryUI() {
         const request = indexedDB.open("ReaderDB", 1);
         request.onsuccess = e => {
@@ -116,11 +132,14 @@ let book, rendition;
             const getAll = store.getAll();
 
             getAll.onsuccess = () => {
-                libraryDiv.innerHTML = ""; // Clear current UI
+                libraryDiv.innerHTML = "";
+                if (getAll.result.length === 0) {
+                    libraryDiv.innerHTML = "<p style='grid-column: 1/-1; text-align:center; color:#888;'>No books saved. Click 'Choose File' to add one!</p>";
+                }
                 getAll.result.forEach(item => {
                     const card = document.createElement("div");
                     card.className = "book-item";
-                    card.innerHTML = `📖<br><small>${item.name}</small>`;
+                    card.innerHTML = `<span style="font-size:30px">📖</span><br><small style="display:block; margin-top:5px; word-break:break-all;">${item.name}</small>`;
                     card.onclick = () => {
                         localStorage.setItem("lastBookName", item.name);
                         loadBook(item.data);
@@ -131,16 +150,15 @@ let book, rendition;
         };
     }
 
-    // 2. Navigation & Files
     tocSelect.onchange = () => rendition.display(tocSelect.value);
     document.getElementById("next").onclick = () => rendition?.next();
     document.getElementById("prev").onclick = () => rendition?.prev();
 
     input.addEventListener("change", async (e) => {
         const file = e.target.files[0];
+        if (!file) return;
         const arrayBuffer = await file.arrayBuffer();
         
-        // Save to DB with a name
         const request = indexedDB.open("ReaderDB", 1);
         request.onsuccess = ev => {
             const db = ev.target.result;
@@ -158,17 +176,17 @@ let book, rendition;
         updateLibraryUI();
         const lastBookName = localStorage.getItem("lastBookName");
         
-        const request = indexedDB.open("ReaderDB", 1);
-        request.onsuccess = e => {
-            const db = e.target.result;
-            if (!lastBookName) return;
-            db.transaction("books").objectStore("books").get(lastBookName).onsuccess = event => {
-                if (event.target.result) loadBook(event.target.result.data);
+        if (lastBookName) {
+            const request = indexedDB.open("ReaderDB", 1);
+            request.onsuccess = e => {
+                const db = e.target.result;
+                db.transaction("books").objectStore("books").get(lastBookName).onsuccess = event => {
+                    if (event.target.result) loadBook(event.target.result.data);
+                };
             };
-        };
+        }
     };
 
-    // 4. PWA Logic (Existing)
     if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js'); }
     window.addEventListener('beforeinstallprompt', (e) => {
         e.preventDefault();
