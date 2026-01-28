@@ -1,14 +1,15 @@
-const CACHE_NAME = 'literead-v1';
+const CACHE_NAME = 'literead-v2';
 const ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
+  './',
+  './index.html',
+  './manifest.json',
   'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js',
   'https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js'
 ];
 
-// 1. Install Event: Save the app shell to cache
+// Unified Install Event
 self.addEventListener('install', (event) => {
+  self.skipWaiting(); // Force new service worker to take over
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(ASSETS);
@@ -16,35 +17,25 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// 2. Activate Event: Clean up old caches if you update versions
+// Unified Activate Event
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))
-      );
-    })
+    Promise.all([
+      clients.claim(), // Take control of pages immediately
+      caches.keys().then((keys) => {
+        return Promise.all(
+          keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))
+        );
+      })
+    ])
   );
 });
 
-// 3. Fetch Event: Serve from cache first, then network
+// Fetch Event (Required for Install Prompt)
 self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((response) => {
       return response || fetch(event.request);
     })
   );
-});
-
-// Add these lines to your sw.js
-self.addEventListener('install', (event) => {
-  self.skipWaiting(); // Force installation
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
-  );
-});
-
-self.addEventListener('activate', (event) => {
-  event.waitUntil(clients.claim()); // Take control immediately
-  // ... rest of your cleanup code
 });
