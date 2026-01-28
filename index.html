@@ -64,7 +64,7 @@
     };
 
     function showLibrary() {
-        if (book) book.destroy();
+        if (book) { book.destroy(); book = null; }
         libraryDiv.classList.remove("hidden");
         viewerDiv.classList.add("hidden");
         controlsDiv.classList.add("hidden");
@@ -230,8 +230,3 @@
 </script>
 </body>
 </html>
-
-
-
-
-
