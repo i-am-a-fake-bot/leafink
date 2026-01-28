@@ -15,6 +15,10 @@
         select { padding: 5px; max-width: 200px; }
         button { padding: 8px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
         button:hover { background: #0056b3; }
+        #library { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 15px; padding: 20px; }
+        .book-item { background: #fff; border: 1px solid #ddd; padding: 10px; text-align: center; cursor: pointer; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .book-item:hover { background: #f0f0f0; }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
@@ -25,6 +29,8 @@
         <button id="installBtn" style="display:none;">📥 Install</button>
     </div>
 
+    <div id="library"></div>
+    
     <div id="viewer"></div>
 
     <div class="controls">
@@ -33,61 +39,98 @@
     </div>
 
 <script>
-    let book, rendition;
+let book, rendition;
     const input = document.getElementById("input");
     const tocSelect = document.getElementById("toc");
     const installBtn = document.getElementById('installBtn');
+    const libraryDiv = document.getElementById("library");
+    const viewerDiv = document.getElementById("viewer");
+    const controlsDiv = document.querySelector(".controls");
     let deferredPrompt; 
 
-async function loadBook(data) {
-    if (book) book.destroy();
-    book = ePub(data);
-    
-    rendition = book.renderTo("viewer", { 
-        width: "100%", 
-        height: "100%", 
-        flow: "paginated",
-        manager: "default"
-    });
+    // Open/Create Database
+    const dbRequest = indexedDB.open("ReaderDB", 1);
+    dbRequest.onupgradeneeded = e => {
+        let db = e.target.result;
+        if (!db.objectStoreNames.contains("books")) {
+            // We use the file name as the unique key
+            db.createObjectStore("books", { keyPath: "name" });
+        }
+    };
 
-    // --- SLIDE ANIMATION HOOK ---
-    rendition.hooks.content.register((contents) => {
-        contents.addStylesheetRules({
-            "body": {
-                "transition": "transform 0.5s ease-in-out !important",
-            }
+    async function loadBook(data) {
+        // Hide library, show reader
+        libraryDiv.classList.add("hidden");
+        viewerDiv.classList.remove("hidden");
+        controlsDiv.classList.remove("hidden");
+
+        if (book) book.destroy();
+        book = ePub(data);
+        
+        rendition = book.renderTo("viewer", { 
+            width: "100%", 
+            height: "100%", 
+            flow: "paginated",
+            manager: "default"
         });
-    });
 
-    // --- Swipe Listeners (Now using local touchStartX to avoid 'this' issues) ---
-    let touchStartX = 0;
-    rendition.on("touchstart", event => {
-        touchStartX = event.changedTouches[0].screenX;
-    });
-
-    rendition.on("touchend", event => {
-        const touchEndX = event.changedTouches[0].screenX;
-        if (touchEndX < touchStartX - 50) rendition.next();
-        if (touchEndX > touchStartX + 50) rendition.prev();
-    });
-    
-    book.loaded.navigation.then(nav => {
-        tocSelect.innerHTML = '<option>Contents</option>';
-        nav.toc.forEach(chapter => {
-            const option = document.createElement("option");
-            option.textContent = chapter.label;
-            option.value = chapter.href;
-            tocSelect.appendChild(option);
+        rendition.hooks.content.register((contents) => {
+            contents.addStylesheetRules({
+                "body": { "transition": "transform 0.5s ease-in-out !important" }
+            });
         });
-    });
 
-    rendition.on("relocated", location => {
-        localStorage.setItem("lastLocation", location.start.cfi);
-    });
+        let touchStartX = 0;
+        rendition.on("touchstart", event => { touchStartX = event.changedTouches[0].screenX; });
+        rendition.on("touchend", event => {
+            const touchEndX = event.changedTouches[0].screenX;
+            if (touchEndX < touchStartX - 50) rendition.next();
+            if (touchEndX > touchStartX + 50) rendition.prev();
+        });
+        
+        book.loaded.navigation.then(nav => {
+            tocSelect.innerHTML = '<option>Contents</option>';
+            nav.toc.forEach(chapter => {
+                const option = document.createElement("option");
+                option.textContent = chapter.label;
+                option.value = chapter.href;
+                tocSelect.appendChild(option);
+            });
+        });
 
-    const savedLocation = localStorage.getItem("lastLocation");
-    rendition.display(savedLocation || undefined);
-}
+        rendition.on("relocated", location => {
+            localStorage.setItem("lastLocation", location.start.cfi);
+        });
+
+        const savedLocation = localStorage.getItem("lastLocation");
+        rendition.display(savedLocation || undefined);
+    }
+
+    // Function to show all books in the library
+    function updateLibraryUI() {
+        const request = indexedDB.open("ReaderDB", 1);
+        request.onsuccess = e => {
+            const db = e.target.result;
+            const transaction = db.transaction("books", "readonly");
+            const store = transaction.objectStore("books");
+            const getAll = store.getAll();
+
+            getAll.onsuccess = () => {
+                libraryDiv.innerHTML = ""; // Clear current UI
+                getAll.result.forEach(item => {
+                    const card = document.createElement("div");
+                    card.className = "book-item";
+                    card.innerHTML = `📖<br><small>${item.name}</small>`;
+                    card.onclick = () => {
+                        localStorage.setItem("lastBookName", item.name);
+                        loadBook(item.data);
+                    };
+                    libraryDiv.appendChild(card);
+                });
+            };
+        };
+    }
+
     // 2. Navigation & Files
     tocSelect.onchange = () => rendition.display(tocSelect.value);
     document.getElementById("next").onclick = () => rendition?.next();
@@ -96,42 +139,42 @@ async function loadBook(data) {
     input.addEventListener("change", async (e) => {
         const file = e.target.files[0];
         const arrayBuffer = await file.arrayBuffer();
-        saveToDb(arrayBuffer);
-        loadBook(arrayBuffer);
+        
+        // Save to DB with a name
+        const request = indexedDB.open("ReaderDB", 1);
+        request.onsuccess = ev => {
+            const db = ev.target.result;
+            db.transaction("books", "readwrite").objectStore("books").put({
+                name: file.name,
+                data: arrayBuffer
+            });
+            updateLibraryUI();
+            localStorage.setItem("lastBookName", file.name);
+            loadBook(arrayBuffer);
+        };
     });
 
-    // 3. Database (IndexedDB)
-    function saveToDb(data) {
-        const request = indexedDB.open("ReaderDB", 1);
-        request.onupgradeneeded = e => e.target.result.createObjectStore("books");
-        request.onsuccess = e => {
-            const db = e.target.result;
-            db.transaction("books", "readwrite").objectStore("books").put(data, "lastBook");
-        };
-    }
-
     window.onload = () => {
+        updateLibraryUI();
+        const lastBookName = localStorage.getItem("lastBookName");
+        
         const request = indexedDB.open("ReaderDB", 1);
         request.onsuccess = e => {
             const db = e.target.result;
-            if (!db.objectStoreNames.contains("books")) return;
-            db.transaction("books").objectStore("books").get("lastBook").onsuccess = event => {
-                if (event.target.result) loadBook(event.target.result);
+            if (!lastBookName) return;
+            db.transaction("books").objectStore("books").get(lastBookName).onsuccess = event => {
+                if (event.target.result) loadBook(event.target.result.data);
             };
         };
     };
 
-    // 4. PWA Registration & Install
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js');
-    }
-
+    // 4. PWA Logic (Existing)
+    if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js'); }
     window.addEventListener('beforeinstallprompt', (e) => {
         e.preventDefault();
         deferredPrompt = e;
         installBtn.style.display = 'inline-block';
     });
-
     installBtn.addEventListener('click', async () => {
         if (deferredPrompt) {
             deferredPrompt.prompt();
@@ -140,8 +183,6 @@ async function loadBook(data) {
             deferredPrompt = null;
         }
     });
-
 </script>
 </body>
 </html>
-
