@@ -17,7 +17,7 @@
         button:hover { background: #0056b3; }
         
         /* Library Styles */
-        #library { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 15px; padding: 20px; flex-grow: 1; overflow-y: auto;}
+        #library { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 15px; padding: 20px; flex-grow: 1; overflow-y: auto; transition: opacity 0.4s ease-in-out; }
         .book-item { background: #fff; border: 1px solid #ddd; padding: 15px; text-align: center; cursor: pointer; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .book-item:hover { background: #f0f0f0; transform: translateY(-2px); transition: 0.2s; }
         .hidden { display: none !important; }
@@ -139,7 +139,13 @@
                 getAll.result.forEach(item => {
                     const card = document.createElement("div");
                     card.className = "book-item";
-                    card.innerHTML = `<span style="font-size:30px">📖</span><br><small style="display:block; margin-top:5px; word-break:break-all;">${item.name}</small>`;
+                    card.innerHTML = `
+                        <div style="text-align:right; margin-bottom:-10px;">
+                            <button onclick="deleteBook('${item.name.replace(/'/g, "\\'")}', event)" 
+                                style="background:none; color:#ff4d4d; padding:0; font-weight:bold;">❌</button>
+                        </div>
+                        <span style="font-size:30px">📖</span>
+                        <br><small style="display:block; margin-top:5px; word-break:break-all;">${item.name}</small>`;
                     card.onclick = () => {
                         localStorage.setItem("lastBookName", item.name);
                         loadBook(item.data);
@@ -223,5 +229,6 @@
 </script>
 </body>
 </html>
+
 
 
