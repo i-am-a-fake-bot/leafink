@@ -17,7 +17,7 @@
         button:hover { background: #0056b3; }
         
         /* Library Styles */
-        #library { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 15px; padding: 20px; }
+        #library { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 15px; padding: 20px; flex-grow: 1; overflow-y: auto;}
         .book-item { background: #fff; border: 1px solid #ddd; padding: 15px; text-align: center; cursor: pointer; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .book-item:hover { background: #f0f0f0; transform: translateY(-2px); transition: 0.2s; }
         .hidden { display: none !important; }
@@ -69,7 +69,7 @@
         viewerDiv.classList.add("hidden");
         controlsDiv.classList.add("hidden");
         tocSelect.classList.add("hidden");
-        backBtn.classList.add("hidden");
+        backBtn.classList.remove("hidden");
         updateLibraryUI();
     }
 
@@ -181,7 +181,7 @@
             request.onsuccess = e => {
                 const db = e.target.result;
                 db.transaction("books").objectStore("books").get(lastBookName).onsuccess = event => {
-                    if (event.target.result) loadBook(event.target.result.data);
+                    //if (event.target.result) loadBook(event.target.result.data);
                 };
             };
         }
@@ -201,7 +201,27 @@
             deferredPrompt = null;
         }
     });
+
+    function deleteBook(name, event) {
+        event.stopPropagation(); // Prevents the book from opening when you click delete
+        if (!confirm(`Delete "${name}"?`)) return;
+    
+        const request = indexedDB.open("ReaderDB", 1);
+        request.onsuccess = e => {
+            const db = e.target.result;
+            const transaction = db.transaction("books", "readwrite");
+            transaction.objectStore("books").delete(name);
+            transaction.oncomplete = () => {
+                if (localStorage.getItem("lastBookName") === name) {
+                    localStorage.removeItem("lastBookName");
+                }
+                updateLibraryUI();
+            };
+        };
+    }
+    
 </script>
 </body>
 </html>
+
 
