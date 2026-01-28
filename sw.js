@@ -1,4 +1,4 @@
-const CACHE_NAME = 'leafink-v2'; 
+const CACHE_NAME = 'leafink-v3'; 
 
 const ASSETS = [
   'index.html',
@@ -41,3 +41,4 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
