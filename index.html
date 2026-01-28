@@ -71,7 +71,7 @@
     function getDB() {
         return new Promise((resolve, reject) => {
             // Updated to version 2 to handle extra fields
-            const request = indexedDB.open("LeafinkDB", 2);
+            const request = indexedDB.open("LeafinkDB", 3);
             
             request.onupgradeneeded = e => {
                 const db = e.target.result;
@@ -171,6 +171,9 @@
                             <div style="font-size:40px;">📖</div>
                             <div style="font-size:12px; margin-top:5px; font-weight:bold;">${item.title || item.name}</div>
                             <div style="font-size:10px; color:#666;">${item.author || 'Unknown Author'}</div>
+                            <div style="font-size:10px; color:#999; margin-top:2px;">${item.pubdate || 'No Date'}</div>
+                            <div style="font-size:10px; color:#777; margin-top:5px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">
+    ${item.summary || 'No summary available.'}</div>
                         </div>`;
                     libraryDiv.appendChild(card);
                 });
@@ -199,15 +202,19 @@
             const entry = e.target.result;
             const newTitle = prompt("Edit Title:", entry.title || entry.name);
             const newAuthor = prompt("Edit Author:", entry.author || "Unknown Author");
+            const newDate = prompt("Edit Date:", entry.pubdate || "No Date");
+            const newSum = prompt("Edit Summary:", entry.summary || "No summary available.");
             
             if (newTitle !== null) {
                 entry.title = newTitle;
                 entry.author = newAuthor;
+                entry.pubdate = newDate;
+                entry.summary = newSum;
                 store.put(entry).onsuccess = () => updateLibraryUI();
             }
         };
     }
-    
+
     // 5. DELETE & UPLOAD
     async function deleteBook(name, event) {
         event.stopPropagation();
@@ -232,12 +239,14 @@
             name: file.name, 
             data: arrayBuffer,
             title: meta.title || file.name,
-            author: meta.creator || "Unknown Author"
+            author: meta.creator || "Unknown Author",
+            pubdate: meta.pubdate || "No Date",
+            summary: meta.description || "No summary available."
         });
         
         tx.oncomplete = () => showLibrary();
     };
-    
+
     // Navigation
     document.getElementById("next").onclick = () => rendition?.next();
     document.getElementById("prev").onclick = () => rendition?.prev();
