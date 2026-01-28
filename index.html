@@ -67,11 +67,11 @@
     const input = document.getElementById("input");
     const backBtn = document.getElementById("backBtn");
     
-    // 1. DATABASE SETUP WITH ERROR HANDLING
+    // 1. DATABASE SETUP WITH METADATA SUPPORT
     function getDB() {
         return new Promise((resolve, reject) => {
-            // Renaming to 'LeafinkDB' bypasses the old stuck 'ReaderDB'
-            const request = indexedDB.open("LeafinkDB", 1);
+            // Updated to version 2 to handle extra fields
+            const request = indexedDB.open("LeafinkDB", 2);
             
             request.onupgradeneeded = e => {
                 const db = e.target.result;
@@ -81,13 +81,11 @@
             };
 
             request.onsuccess = e => resolve(e.target.result);
-            
             request.onerror = e => {
                 console.error("DB Error:", e.target.error);
                 reject("IndexedDB failed to open");
             };
 
-            // This is the safety net
             request.onblocked = () => {
                 console.warn("Database blocked! Please close other tabs.");
             };
@@ -98,7 +96,6 @@
     async function showLibrary() {
         if (book) { book.destroy(); book = null; }
         
-        // UI Reset
         libraryDiv.classList.remove("hidden");
         input.classList.remove("hidden");
         viewerDiv.classList.add("hidden");
@@ -142,7 +139,7 @@
         });
     }
     
-    // 4. DRAW THE LIBRARY GRID
+    // 4. DRAW THE LIBRARY GRID (Showing Metadata)
     async function updateLibraryUI() {
         try {
             const db = await getDB();
@@ -163,19 +160,52 @@
                     const card = document.createElement("div");
                     card.className = "book-item";
                     const safeName = item.name.replace(/'/g, "\\'");
+                    
+                    // Main layout preserved, added Edit button and metadata text
                     card.innerHTML = `
-                        <div style="text-align:right">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <button onclick="editMeta('${safeName}', event)" style="background:#6c757d; font-size:10px; padding:2px 5px;">Edit</button>
                             <button onclick="deleteBook('${safeName}', event)" style="background:none; color:red; padding:0; font-size:20px;">×</button>
                         </div>
-                        <div style="font-size:40px;">📖</div>
-                        <div style="font-size:12px; margin-top:5px; font-weight:bold;">${item.name}</div>`;
-                    card.onclick = () => loadBook(item.data);
+                        <div onclick="openBookFromDB('${safeName}')">
+                            <div style="font-size:40px;">📖</div>
+                            <div style="font-size:12px; margin-top:5px; font-weight:bold;">${item.title || item.name}</div>
+                            <div style="font-size:10px; color:#666;">${item.author || 'Unknown Author'}</div>
+                        </div>`;
                     libraryDiv.appendChild(card);
                 });
             };
         } catch (err) {
             libraryDiv.innerHTML = "<p>Error loading library. Please refresh.</p>";
         }
+    }
+
+    // Helper: Opens book from Database when card is clicked
+    async function openBookFromDB(name) {
+        const db = await getDB();
+        db.transaction("books").objectStore("books").get(name).onsuccess = e => {
+            if (e.target.result) loadBook(e.target.result.data);
+        };
+    }
+
+    // New: Function to Edit Metadata via prompts
+    async function editMeta(name, event) {
+        event.stopPropagation();
+        const db = await getDB();
+        const tx = db.transaction("books", "readwrite");
+        const store = tx.objectStore("books");
+        
+        store.get(name).onsuccess = (e) => {
+            const entry = e.target.result;
+            const newTitle = prompt("Edit Title:", entry.title || entry.name);
+            const newAuthor = prompt("Edit Author:", entry.author || "Unknown Author");
+            
+            if (newTitle !== null) {
+                entry.title = newTitle;
+                entry.author = newAuthor;
+                store.put(entry).onsuccess = () => updateLibraryUI();
+            }
+        };
     }
     
     // 5. DELETE & UPLOAD
@@ -189,11 +219,23 @@
     input.onchange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        const data = await file.arrayBuffer();
+        const arrayBuffer = await file.arrayBuffer();
+        
+        // Extract metadata before saving
+        const tempBook = ePub(arrayBuffer);
+        const meta = await tempBook.loaded.metadata;
+
         const db = await getDB();
         const tx = db.transaction("books", "readwrite");
-        tx.objectStore("books").put({ name: file.name, data: data });
-        tx.oncomplete = () => loadBook(data);
+        
+        tx.objectStore("books").put({ 
+            name: file.name, 
+            data: arrayBuffer,
+            title: meta.title || file.name,
+            author: meta.creator || "Unknown Author"
+        });
+        
+        tx.oncomplete = () => showLibrary();
     };
     
     // Navigation
