@@ -3,41 +3,60 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="manifest" href="/manifest.json">
-    <title>LiteRead PWA</title>
+    <link rel="manifest" href="./manifest.json">
+    <title>Leafink eBook Reader</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js"></script>
     <style>
-        #viewer { width: 100vw; height: 80vh; margin: 0 auto; }
-        .controls { text-align: center; padding: 20px; }
+        body { font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: #f4f4f4; }
+        #viewer { flex-grow: 1; width: 100%; background: white; }
+        .nav-bar { display: flex; justify-content: space-between; align-items: center; padding: 10px; background: #fff; border-bottom: 1px solid #ddd; }
+        .controls { padding: 15px; background: #fff; border-top: 1px solid #ddd; text-align: center; }
+        select { padding: 5px; max-width: 200px; }
+        button { padding: 8px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
+        button:hover { background: #0056b3; }
     </style>
 </head>
 <body>
-    <input type="file" id="input" accept=".epub">
+
+    <div class="nav-bar">
+        <input type="file" id="input" accept=".epub">
+        <select id="toc"><option>Contents</option></select>
+        <button id="installBtn" style="display:none;">📥 Install</button>
+    </div>
+
     <div id="viewer"></div>
+
     <div class="controls">
         <button id="prev">← Prev</button>
         <button id="next">Next →</button>
     </div>
 
-<button id="installBtn" style="display:none; background: #007bff; color: white; border: none; padding: 10px; border-radius: 5px; margin: 10px;">
-  📥 Install App
-</button>
-	
 <script>
     let book, rendition;
     const input = document.getElementById("input");
+    const tocSelect = document.getElementById("toc");
+    const installBtn = document.getElementById('installBtn');
+    let deferredPrompt; // Declared only once
 
-    // 1. Function to display the book
+    // 1. Load and Render Book
     async function loadBook(data) {
-        if (book) book.destroy(); // Clear old book if it exists
-        
+        if (book) book.destroy();
         book = ePub(data);
-        rendition = book.renderTo("viewer", { 
-            width: "100%", height: "100%", flow: "paginated" 
+        rendition = book.renderTo("viewer", { width: "100%", height: "100%", flow: "paginated" });
+
+        // Generate Table of Contents
+        book.loaded.navigation.then(nav => {
+            tocSelect.innerHTML = '<option>Contents</option>';
+            nav.toc.forEach(chapter => {
+                const option = document.createElement("option");
+                option.textContent = chapter.label;
+                option.value = chapter.href;
+                tocSelect.appendChild(option);
+            });
         });
 
-        rendition.on("relocated", (location) => {
+        rendition.on("relocated", location => {
             localStorage.setItem("lastLocation", location.start.cfi);
         });
 
@@ -45,17 +64,19 @@
         rendition.display(savedLocation || undefined);
     }
 
-    // 2. Handle new file uploads
+    // 2. Navigation & Files
+    tocSelect.onchange = () => rendition.display(tocSelect.value);
+    document.getElementById("next").onclick = () => rendition?.next();
+    document.getElementById("prev").onclick = () => rendition?.prev();
+
     input.addEventListener("change", async (e) => {
         const file = e.target.files[0];
         const arrayBuffer = await file.arrayBuffer();
-        
-        // Save to IndexedDB (simplified example using a basic store)
-        saveToDb(arrayBuffer); 
+        saveToDb(arrayBuffer);
         loadBook(arrayBuffer);
     });
 
-    // 3. Simple IndexedDB logic to auto-load on refresh
+    // 3. Database (IndexedDB)
     function saveToDb(data) {
         const request = indexedDB.open("ReaderDB", 1);
         request.onupgradeneeded = e => e.target.result.createObjectStore("books");
@@ -76,56 +97,25 @@
         };
     };
 
-    document.getElementById("next").onclick = () => rendition?.next();
-    document.getElementById("prev").onclick = () => rendition?.prev();
-
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js');
-        }
-		
-	let deferredPrompt;
-
-	window.addEventListener('beforeinstallprompt', (e) => {
-	  // Prevent Chrome from showing its own prompt
-	  e.preventDefault();
-	  // Stash the event so it can be triggered later.
-	  deferredPrompt = e;
-	  // Show an "Install App" button in your UI
-	  console.log("PWA is ready to be installed");
-	});
-
-	// To trigger the prompt (put this in a button click)
-	async function installApp() {
-	  if (deferredPrompt) {
-		deferredPrompt.prompt();
-		const { outcome } = await deferredPrompt.userChoice;
-		if (outcome === 'accepted') console.log('User installed the app');
-		deferredPrompt = null;
-	  }
-	}	
-let deferredPrompt;
-const installBtn = document.getElementById('installBtn');
-
-window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    installBtn.style.display = 'inline-block'; // Show button when ready
-});
-
-installBtn.addEventListener('click', async () => {
-    if (deferredPrompt) {
-        deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        if (outcome === 'accepted') {
-            installBtn.style.display = 'none';
-        }
-        deferredPrompt = null;
+    // 4. PWA Registration & Install
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./sw.js');
     }
-});
 
-	
-		
-    </script>
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        installBtn.style.display = 'inline-block';
+    });
+
+    installBtn.addEventListener('click', async () => {
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            if (outcome === 'accepted') installBtn.style.display = 'none';
+            deferredPrompt = null;
+        }
+    });
+</script>
 </body>
 </html>
-
