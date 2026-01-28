@@ -1,8 +1,8 @@
-const CACHE_NAME = 'literead-v2';
 const ASSETS = [
-  './',
-  './index.html',
-  './manifest.json',
+  'index.html', // Remove the './' duplicate
+  'manifest.json',
+  'Leafink-icon.png', // Add your icons here! They MUST be cached for offline use
+  'Leafink-logo.png',
   'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js',
   'https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js'
 ];
@@ -39,3 +39,4 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
